@@ -1,0 +1,6 @@
+*.test
+*.out
+/coverage.*
+/examples/bin/
+testdata/fuzz/
+.DS_Store

@@ -1,0 +1,15 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: row-pg
+    environment:
+      POSTGRES_USER: row
+      POSTGRES_PASSWORD: row
+      POSTGRES_DB: row_test
+    ports:
+      - "55432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U row -d row_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 30

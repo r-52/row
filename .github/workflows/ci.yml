@@ -1,0 +1,99 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test (go ${{ matrix.go }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        go: ['1.24', '1.25']
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: row
+          POSTGRES_PASSWORD: row
+          POSTGRES_DB: row_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U row -d row_test"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go }}
+
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "These files need gofmt:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: go mod tidy is clean
+        run: |
+          go mod tidy
+          git diff --exit-code go.mod go.sum
+
+      # ROW_PG_REQUIRED turns a missing PostgreSQL into a failure rather than a
+      # skip, so a broken service container cannot quietly halve the coverage.
+      - name: test
+        env:
+          ROW_PG_DSN: postgres://row:row@localhost:5432/row_test?sslmode=disable
+          ROW_PG_REQUIRED: '1'
+        run: go test -race -count=1 ./...
+
+  fuzz:
+    name: fuzz the SQL scanner
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+      - run: go test -run=XXX -fuzz=FuzzLex -fuzztime=60s .
+
+  examples:
+    name: cross-engine example
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: row
+          POSTGRES_PASSWORD: row
+          POSTGRES_DB: row_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U row -d row_test"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+      - run: go run ./examples/crossengine -pg 'postgres://row:row@localhost:5432/row_test?sslmode=disable'
